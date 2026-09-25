@@ -29,7 +29,8 @@ Contents
 
 Every node runs inside the Isaac ROS Docker container (`isaac_ros_dev_container`, ROS 2 Jazzy,
 Isaac ROS 4.6). A single launch file, `kratos_nvblox_bringup/launch/bringup.launch.py`, starts
-the whole chain. The `camera:=` argument picks the camera and `depth:=` picks where depth comes from.
+the whole chain. The `camera:=` argument picks the camera and `depth:=` picks where depth comes from. The
+default depth depends on the camera: ZED SDK NEURAL for the ZED 2i, ESS for the D435i.
 
 ```
                  ┌──────────── camera:=zed2i ────────────┐   ┌──────────── camera:=d435i ───────────┐
@@ -37,9 +38,9 @@ the whole chain. The `camera:=` argument picks the camera and `depth:=` picks wh
                  │                                        │   │   └─ realsense_splitter               │
  odometry (TF)   │ ZED visual-inertial tracking           │   │ cuVSLAM on the projector-off IR pair  │
                  │   odom -> zed_camera_link              │   │   odom -> camera0_link                │
+ depth:=native   │ ZED SDK NEURAL depth       (default)   │   │ D435i on-chip depth (projector on)    │
  depth:=ess      │ ESS DNN on the gray rectified pair     │   │ ESS DNN on the projector-off IR pair  │
-   (default)     │   -> /ess/depth                        │   │   -> /ess/depth                       │
- depth:=native   │ ZED SDK NEURAL depth                   │   │ D435i on-chip depth (projector on)    │
+                 │   -> /ess/depth                        │   │   -> /ess/depth           (default)   │
                  └────────────────────────────────────────┘   └───────────────────────────────────────┘
                                           │  depth + color + TF
                                           ▼
@@ -233,8 +234,8 @@ What to know:
 ### 4.2 Run
 
 ```bash
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i                  # ESS depth (default)
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=native    # ZED SDK NEURAL depth
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i                  # ZED SDK NEURAL depth (default)
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=ess       # ESS depth
 ```
 
 ### 4.3 What runs
@@ -249,7 +250,9 @@ What to know:
     loop-closure jumps would tear the map.
   - SDK depth in 32FC1 metres, 0.3–10 m.
 - **Depth mode, set by the launch file:**
-  - `depth:=native` → `NEURAL`. nvblox integrates `/zed/zed_node/depth/depth_registered`.
+  - `depth:=native` (default) → `NEURAL`. nvblox integrates `/zed/zed_node/depth/depth_registered`.
+    It's the default because it beats ESS on every measured rate (table in 4.5) and leaves
+    more GPU for nvblox.
   - `depth:=ess` → `NEURAL_LIGHT`. ZED tracking needs the SDK's depth running, so the lighter
     model runs just for that. nvblox integrates `/ess/depth` instead.
 - **ESS** (`depth:=ess`), configured by `config/ess_zed2i.yaml`:
@@ -277,12 +280,15 @@ this only happens again after an SDK or GPU change. The costmap waits up to 900 
 
 Measured with 2 cm voxels, MAXN power mode, headless:
 
-| | ZED 2i + ESS | ZED 2i + NEURAL |
+| | ZED 2i + NEURAL (default) | ZED 2i + ESS |
 |---|---|---|
-| depth | `/ess/depth` 1280x720, ~12.6 Hz, ~85 % fill | `depth_registered` 1280x720, ~22 Hz |
-| odometry (`/zed/zed_node/odom`) | ~50 Hz | ~57 Hz |
-| `/nvblox_node/static_map_slice` | ~9.7–12.5 Hz | ~12 Hz |
-| `/local_costmap/costmap` | ~11.4 Hz | ~12.3 Hz |
+| depth | `depth_registered` 1280x720, ~22 Hz | `/ess/depth` 1280x720, ~12.6 Hz, ~85 % fill |
+| odometry (`/zed/zed_node/odom`) | ~57 Hz | ~50 Hz |
+| `/nvblox_node/static_map_slice` | ~12 Hz | ~9.7–12.5 Hz |
+| `/local_costmap/costmap` | ~12.3 Hz | ~11.4 Hz |
+
+Depth *quality* (noise, flying pixels, multi-view consistency) has not been compared on the
+ZED yet. `bench_zed/` has the tooling for it (`metrics.py`), but it hasn't been run.
 
 ### 4.6 ZED-specific problems
 
@@ -306,7 +312,7 @@ Measured with 2 cm voxels, MAXN power mode, headless:
 ### 5.2 Run
 
 ```bash
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i                  # ESS depth (default)
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i                  # ESS depth (default for the D435i)
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i depth:=native    # on-chip depth
 ```
 
@@ -373,10 +379,10 @@ close range indoors on untextured surfaces with `depth:=native`.
 
 ### 6.2 Depth source
 
-| | `depth:=ess` (default) | `depth:=native` |
+| | `depth:=ess` | `depth:=native` |
 |---|---|---|
-| ZED 2i | ESS on the gray pair, sharp edges, ~12.6 Hz into nvblox | SDK NEURAL, ~22 Hz, smoother |
-| D435i | ESS on projector-off IR, filtered with TTA | on-chip depth with projected dots |
+| ZED 2i | ESS on the gray pair, ~12.6 Hz into nvblox | **default**: SDK NEURAL, ~22 Hz |
+| D435i | **default**: ESS on projector-off IR, filtered with TTA | on-chip depth with projected dots |
 | GPU | ESS uses the GPU heavily | ZED NEURAL uses the GPU; D435i on-chip uses none |
 
 ### 6.3 Switching cameras
@@ -461,7 +467,7 @@ Pass them to `run_nvblox.sh` or `rover_up.sh`. The full list is always available
 | Argument | Default | Meaning |
 |---|---|---|
 | `camera` | `d435i` | `d435i` or `zed2i` |
-| `depth` | `ess` | `ess` (ESS DNN) or `native` (ZED NEURAL / D435i on-chip) |
+| `depth` | `native` for zed2i, `ess` for d435i | `ess` (ESS DNN) or `native` (ZED NEURAL / D435i on-chip) |
 | `run_rviz` | `False` | RViz on the Orin's display |
 | `run_costmap` | `True` | standalone Nav2 costmap; set `False` when a full Nav2 stack provides one |
 | `costmap_params` | `config/nvblox_costmap.yaml` | costmap parameter file |

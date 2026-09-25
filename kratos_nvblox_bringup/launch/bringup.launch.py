@@ -2,18 +2,18 @@
 
     ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=d435i
     ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=zed2i
-    ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=zed2i depth:=native run_rviz:=False
+    ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=zed2i depth:=ess run_rviz:=True
 
 camera:=d435i (RealSense D435i)
     848x480, projector flashing @60 -> realsense_splitter
         projector-off IR pair @30 -> cuVSLAM              TF odom -> camera0_link
-                                  -> ESS    (depth:=ess)     /ess/depth
-        projector-on depth   @30  ->        (depth:=native)  on-chip depth
+                                  -> ESS    (depth:=ess, default)  /ess/depth
+        projector-on depth   @30  ->        (depth:=native)        on-chip depth
 
 camera:=zed2i (ZED 2i)
     1280x720 @30 (zed-ros2-wrapper) -> ZED visual-inertial tracking   TF odom -> zed_camera_link
+        ZED SDK NEURAL depth        (depth:=native, default) /zed/zed_node/depth/depth_registered
         gray rectified pair -> ESS  (depth:=ess)             /ess/depth
-        ZED SDK NEURAL depth        (depth:=native)          /zed/zed_node/depth/depth_registered
 
 then  depth + color + TF -> nvblox (2 cm voxels)             /nvblox_node/static_map_slice
                          -> Costmap2DROS + NvbloxCostmapLayer /local_costmap/costmap
@@ -47,6 +47,7 @@ CONTAINER = 'nvblox_container'   # NVIDIA's vslam.launch.py loads cuVSLAM into t
 
 CAMERAS = {
     'd435i': {
+        'default_depth': 'ess',
         # depth option -> (depth image, depth camera_info)
         'depth': {
             'ess': ('/ess/depth', '/ess/camera_info'),
@@ -59,6 +60,9 @@ CAMERAS = {
         'nvblox_config': 'config/nvblox/specializations/nvblox_realsense.yaml',
     },
     'zed2i': {
+        # NEURAL beats ESS here on every measured rate (depth ~22 vs ~12.6 Hz into nvblox) and
+        # leaves the GPU to nvblox: ESS would run next to the SDK's NEURAL_LIGHT (tracking).
+        'default_depth': 'native',
         'depth': {
             'ess': ('/ess/depth', '/ess/camera_info'),
             'native': ('/zed/zed_node/depth/depth_registered', '/zed/zed_node/depth/camera_info'),
@@ -129,7 +133,7 @@ def zed2i(nvblox_share, depth, context):
 def launch_setup(context):
     nvblox_share = get_package_share_directory('nvblox_examples_bringup')
     camera = LaunchConfiguration('camera').perform(context)
-    depth = LaunchConfiguration('depth').perform(context)
+    depth = LaunchConfiguration('depth').perform(context) or CAMERAS[camera]['default_depth']
     cam = CAMERAS[camera]
     depth_image, depth_info = cam['depth'][depth]
     color_image, color_info = cam['color']
@@ -256,9 +260,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('camera', default_value='d435i', choices=list(CAMERAS),
                               description='Stereo camera feeding nvblox'),
-        DeclareLaunchArgument('depth', default_value='ess', choices=['ess', 'native'],
+        DeclareLaunchArgument('depth', default_value='', choices=['', 'ess', 'native'],
                               description="ess: NVIDIA ESS on the camera's stereo pair; native: the "
-                                          "camera's own depth (D435i on-chip / ZED SDK NEURAL)"),
+                                          "camera's own depth (D435i on-chip / ZED SDK NEURAL). "
+                                          "Default: native for zed2i, ess for d435i"),
         DeclareLaunchArgument('run_rviz', default_value='False', choices=['True', 'False', 'true', 'false'],
                               description='RViz on the Orin itself (needs a display; off for remote use)'),
         DeclareLaunchArgument('run_remote', default_value='True', choices=['True', 'False', 'true', 'false'],

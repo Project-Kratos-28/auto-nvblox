@@ -13,8 +13,8 @@ camera:=d435i (default)
      projector-on depth @30                                              (depth:=native)
 camera:=zed2i
   ZED 2i 1280x720 @30, ZED visual-inertial tracking -> TF odom -> zed_camera_link
-     gray rectified pair -> ESS DNN stereo -> /ess/depth                 (depth:=ess, default)
-     ZED SDK NEURAL depth -> /zed/zed_node/depth/depth_registered        (depth:=native)
+     ZED SDK NEURAL depth -> /zed/zed_node/depth/depth_registered        (depth:=native, default)
+     gray rectified pair -> ESS DNN stereo -> /ess/depth                 (depth:=ess)
 then
   depth + color + TF -> nvblox (2 cm voxels) -> NvbloxCostmapLayer -> /local_costmap/costmap
 ```
@@ -32,8 +32,8 @@ ESS is the node and TensorRT engines from `~/realsense` rs_depth_bench, copied t
 
 # inside the container
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i                # D435i + ESS (headless)
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i                # ZED 2i + ESS
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=native  # ZED 2i + ZED NEURAL depth
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i                # ZED 2i + ZED NEURAL depth
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=ess     # ZED 2i + ESS
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i depth:=native  # D435i on-chip depth
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i run_rviz:=True   # RViz on the rover display
 # run_nvblox.sh just sources the workspaces and runs

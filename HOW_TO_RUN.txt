@@ -52,14 +52,15 @@ Pick the camera that is plugged in:
 That starts: camera -> depth -> odometry -> nvblox -> Nav2 costmap and the /remote/* topics. No RViz unless you add run_rviz:=True (needs a monitor on the rover).
 
 Options (add after the camera):
-    depth:=ess          depth from NVIDIA ESS (default)
     depth:=native       the camera's own depth (ZED: NEURAL depth, D435i: on-chip)
+                        default for the ZED 2i
+    depth:=ess          depth from NVIDIA ESS; default for the D435i
     run_rviz:=True      RViz on the rover's own display
     run_foxglove:=True  Foxglove websocket viewer on port 8765
     run_costmap:=False  no standalone costmap (when a full Nav2 stack provides one)
 
 Example:
-    /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=native
+    /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=ess
 
 The same thing as a plain ROS launch (the script just sets up the environment first):
     ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=zed2i
