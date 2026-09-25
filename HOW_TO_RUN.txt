@@ -3,7 +3,7 @@ KRATOS NVBLOX - HOW TO RUN
 
 nvblox + Nav2 costmap on the Jetson AGX Orin, inside Docker, using either a
 ZED 2i or a RealSense D435i. Everything runs inside the container.
-More detail: README.md in this folder.
+More detail: docs/USAGE.md (full guide for both cameras) and README.md.
 
 
 0. ON THE ROVER, FROM THE BASE STATION (normal use)

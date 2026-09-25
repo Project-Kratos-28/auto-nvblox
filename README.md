@@ -21,6 +21,9 @@ then
 
 ESS is the node and TensorRT engines from `~/realsense` rs_depth_bench, copied to `ess/`.
 
+**Full guide (setup from a fresh clone, each camera in detail, tuning, troubleshooting):
+[`docs/USAGE.md`](docs/USAGE.md).**
+
 ## Run
 
 ```bash
@@ -28,7 +31,7 @@ ESS is the node and TensorRT engines from `~/realsense` rs_depth_bench, copied t
 ~/kratos_nvblox/start.sh
 
 # inside the container
-/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i                # D435i + ESS, with RViz
+/workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i                # D435i + ESS (headless)
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i                # ZED 2i + ESS
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=native  # ZED 2i + ZED NEURAL depth
 /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i depth:=native  # D435i on-chip depth
