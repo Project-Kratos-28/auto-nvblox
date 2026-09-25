@@ -22,11 +22,10 @@ ESS runs as its own process from ess_root (TensorRT + torch venv); everything el
 
 Remote operation (the rover is reached over a WLAN link, e.g. Ubiquiti Rocket 5AC):
   - Headless by default: no RViz on the Orin (it also costs GPU time ESS and nvblox need).
-  - DDS stays on the Orin (ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST in scripts/run_nvblox.sh), so
-    full-rate images, depth and the 12 Hz costmap never cross the radio link.
+  - Plain Fast DDS with default discovery (SUBNET, domain 0): the base station subscribes directly.
+    Subscribe to /remote/* there, not the full-rate topics, to keep the radio link light.
   - run_remote: throttled copies for the base station under /remote/: costmap (remote_costmap_hz),
     JPEG color (remote_image_hz, remote_jpeg_quality), ESDF slice Cloudini-compressed (remote_esdf_hz).
-  - run_zenoh: zenoh-bridge-ros2dds forwards only /remote/*, TF and odometry (zenoh/rover.json5).
   - run_foxglove (off): optional websocket viewer with a similar whitelist.
 """
 
@@ -184,7 +183,7 @@ def launch_setup(context):
 
     # Remote interface for the base station: throttled copies of heavy topics under /remote/.
     # Onboard consumers keep the full-rate originals; only /remote/* (+ TF, odometry) are meant
-    # to cross the radio link, whatever carries them (Zenoh bridge, Foxglove, ...).
+    # to cross the radio link, whatever carries them (DDS, Foxglove, ...).
     run_remote = IfCondition(LaunchConfiguration('run_remote'))
     actions.append(Node(
         package='kratos_nvblox_bringup', executable='throttle_relay.py', name='remote_costmap_relay',
@@ -210,14 +209,6 @@ def launch_setup(context):
         parameters=[{'topic_input': '/remote/esdf_slice', 'topic_output': '/remote/esdf_slice/cloudini',
                      'compressing': True, 'resolution': 0.005}],
         condition=run_remote))
-
-    # Zenoh bridge: the only process talking over the radio link. Forwards the allow-listed
-    # /remote/* topics, TF and odometry (zenoh/rover.json5); DDS itself stays on the Orin.
-    zenoh_root = LaunchConfiguration('zenoh_root').perform(context)
-    actions.append(ExecuteProcess(
-        cmd=[os.path.join(zenoh_root, 'zenoh-bridge-ros2dds'), '-c', os.path.join(zenoh_root, 'rover.json5')],
-        name='zenoh_bridge', output='screen', respawn=True, respawn_delay=3.0,
-        condition=IfCondition(LaunchConfiguration('run_zenoh'))))
 
     # Optional Foxglove viewer (websocket); off by default: the base station GUI is PyQt5.
     run_foxglove = IfCondition(LaunchConfiguration('run_foxglove'))
@@ -272,10 +263,6 @@ def generate_launch_description():
                               description='RViz on the Orin itself (needs a display; off for remote use)'),
         DeclareLaunchArgument('run_remote', default_value='True', choices=['True', 'False', 'true', 'false'],
                               description='Throttled /remote/* topics for the base station'),
-        DeclareLaunchArgument('run_zenoh', default_value='True', choices=['True', 'False', 'true', 'false'],
-                              description='zenoh-bridge-ros2dds to the base station (zenoh/rover.json5)'),
-        DeclareLaunchArgument('zenoh_root', default_value='/workspaces/kratos_nvblox/zenoh',
-                              description='zenoh-bridge-ros2dds binary and rover.json5'),
         DeclareLaunchArgument('run_foxglove', default_value='False', choices=['True', 'False', 'true', 'false'],
                               description='foxglove_bridge websocket viewer (port foxglove_port)'),
         DeclareLaunchArgument('foxglove_port', default_value='8765'),

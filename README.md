@@ -53,14 +53,10 @@ docker exec -it -u admin -e DISPLAY=$DISPLAY -e CAMERA=zed2i isaac_ros_dev_conta
     /workspaces/kratos_nvblox/scripts/run_rviz.sh
 ```
 
-The scripts set `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`. With the default
-subnet discovery, a Wi-Fi drop/reconnect leaves already-running nodes
-undiscoverable, so RViz shows "No tf data" and blank images even though
-the pipeline is still running. Export the same variable in any host terminal
-that should see these topics.
-
-The container uses `--network host`, so the host's Jazzy tools see every topic
-(with `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` exported, see above).
+ROS 2 uses the default Fast DDS setup: domain 0, SUBNET discovery. The container uses
+`--network host`, so the host's Jazzy tools and other machines on the network see every topic.
+If a Wi-Fi drop/reconnect leaves RViz with "No tf data" while the pipeline still runs, restart
+RViz (or the pipeline).
 The first launch after the container is created is slow (~2 min) while CUDA
 kernels compile. Later launches reuse the cache.
 
@@ -70,20 +66,16 @@ Use `rover_up.sh` / `rover_status.sh` / `rover_down.sh` over SSH (see HOW_TO_RUN
 container and the pipeline detached from the SSH session (`setsid`, `docker exec -d`), so link
 dropouts do not stop the rover.
 
-- ROS 2 DDS stays on the Orin (LOCALHOST discovery). Only the Zenoh bridge
-  (`zenoh/zenoh-bridge-ros2dds` 1.10.1, `zenoh/rover.json5`, tcp/7447) uses the radio, and it
-  forwards only an allow-list: `/remote/costmap`, `/remote/color/compressed`,
-  `/remote/esdf_slice/cloudini`, TF, odometry, footprint, ESS latency (rate-capped).
+- Plain Fast DDS over the link: the base station runs ROS 2 Jazzy on domain 0 with default
+  discovery and subscribes directly. Subscribe to `/remote/*` there, not the full-rate topics:
+  DDS sends whatever a subscriber asks for.
 - `/remote/*` are throttled copies made by `throttle_relay.py` (republishes serialized messages,
   no decoding); the ESDF slice is compressed with Cloudini (5 mm resolution, 622 KB -> ~30 KB).
   The ZED's JPEG stream is set to quality 60 (95 default: 262 KB/frame; 60: 65 KB).
-- Measured over the bridge with every topic subscribed: ~2.9 Mbit/s. For comparison, the first
+- With the (now removed) Zenoh bridge, the `/remote/*` set measured ~2.9 Mbit/s. The first
   Foxglove setup (unthrottled ESDF cloud, JPEG 95) needed ~66 Mbit/s.
-- Base station: `zenoh/base_station.json5`, ROS_DOMAIN_ID 42 with default (SUBNET) discovery.
-  Tested on the Orin with a second bridge: a Fast DDS subscriber with LOCALHOST discovery
-  receives nothing from the bridge's CycloneDDS writers; SUBNET works.
 - Headless by default (`run_rviz:=False`); RViz on the Orin also costs GPU that ESS/nvblox use.
-- ESS and the Zenoh bridge respawn if they exit.
+- ESS respawns if it exits.
 
 ## Image
 
@@ -163,7 +155,6 @@ the camera's mounting height.
   - `rviz/`: `d435i.rviz`, `zed2i.rviz` (picked by `camera`)
 - `docker/`: `Dockerfile.kratos`, `build_image.sh`, `99-slabs.rules`
 - `zed/`: persisted ZED SDK models and calibration
-- `zenoh/`: zenoh-bridge-ros2dds binary, `rover.json5`, `base_station.json5`
 - `rover_up.sh`, `rover_status.sh`, `rover_down.sh`: remote bringup over SSH; `logs/`: their logs
 - `ess/`: ESS node, engines (TensorRT 10.16, same as host), plugin, torch wheel, `.venv`
 - `scripts/`: run/stop/build helpers, `topic_rates.py` (rate probe that doesn't undercount large images)

@@ -56,7 +56,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf build log \
     && echo "source ${ZED_WS}/install/setup.bash" >> /etc/bash.bashrc
 
-# Remote link to the base station: Cloudini point cloud compression (the Zenoh bridge is a
-# standalone binary in the mounted ~/kratos_nvblox/zenoh). Last layer so it rebuilds alone.
+# Remote link to the base station: Cloudini point cloud compression. Last layer so it rebuilds alone.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends ros-${ROS_DISTRO}-cloudini-ros

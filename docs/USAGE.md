@@ -47,7 +47,7 @@ the whole chain. The `camera:=` argument picks the camera and `depth:=` picks wh
                                           ▼
                  Nav2 Costmap2DROS + NvbloxCostmapLayer ──► /local_costmap/costmap
                                           ▼
-                 throttled /remote/* copies ──► Zenoh bridge ──► base station (optional)
+                 throttled /remote/* copies ──► base station over plain DDS (optional)
 ```
 
 The pieces:
@@ -200,9 +200,9 @@ loaded. The originals were built in `~/realsense/ess`.
 ~/kratos_nvblox/scripts/stop_nvblox.sh
 ```
 
-`run_nvblox.sh` sources ROS, the ZED workspace and the Isaac ROS workspace, sets
-`ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`, and runs
-`ros2 launch kratos_nvblox_bringup bringup.launch.py <your args>`.
+`run_nvblox.sh` sources ROS, the ZED workspace and the Isaac ROS workspace, and runs
+`ros2 launch kratos_nvblox_bringup bringup.launch.py <your args>`. ROS 2 uses the default
+Fast DDS setup (domain 0, SUBNET discovery), with no custom middleware configuration.
 
 What to know:
 
@@ -405,7 +405,6 @@ From a second shell in the container:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 /workspaces/kratos_nvblox/scripts/topic_rates.py \
     /ess/depth /zed/zed_node/odom /nvblox_node/static_map_slice /local_costmap/costmap
 ```
@@ -417,7 +416,7 @@ in Python and badly undercounts large images; for example, it reads 1280x720 dep
 when ~11 Hz is published.
 
 `~/kratos_nvblox/rover_status.sh` (host) gives a one-shot health summary: rates, ESS latency,
-GPU load, RAM, temperature, log errors and the Zenoh link.
+GPU load, RAM, temperature, log errors and the rover's IP addresses.
 
 ### 7.3 RViz
 
@@ -443,11 +442,12 @@ RViz on the Orin takes GPU time from ESS and nvblox; expect slightly lower rates
 
 ### 7.4 From a host terminal
 
-The container uses `--network host`, so host ROS tools see the topics once discovery matches:
+The container uses `--network host`, so host ROS tools (and other machines on the network)
+see the topics with default settings. Leave `ROS_DOMAIN_ID` and `ROS_AUTOMATIC_DISCOVERY_RANGE`
+unset:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 ros2 topic list
 ```
 
@@ -473,8 +473,6 @@ Pass them to `run_nvblox.sh` or `rover_up.sh`. The full list is always available
 | `remote_image_hz` | `5.0` | rate of `/remote/color/compressed` |
 | `remote_esdf_hz` | `4.0` | rate of `/remote/esdf_slice[/cloudini]` |
 | `remote_jpeg_quality` | `60` | JPEG quality of the ZED compressed color stream |
-| `run_zenoh` | `True` | Zenoh bridge to the base station |
-| `zenoh_root` | `/workspaces/kratos_nvblox/zenoh` | bridge binary and `rover.json5` |
 | `run_foxglove` | `False` | Foxglove websocket viewer |
 | `foxglove_port` | `8765` | Foxglove port |
 | `stream_bandwidth_mbps` | `5.0` | cap on nvblox's mesh visualization stream |
@@ -522,29 +520,28 @@ ssh bitsauto@<rover-ip> ~/kratos_nvblox/rover_down.sh                 # --all al
 `rover_up.sh` starts the container if needed, starts the pipeline in the background (log:
 `logs/latest.log`), waits for the costmap and prints a status summary.
 
-ROS 2 DDS stays on the Orin. Only the Zenoh bridge (`zenoh/rover.json5`, tcp/7447) uses the
-radio, and it forwards only this allow-list:
+The link uses plain Fast DDS with the defaults (domain 0, SUBNET discovery). A base station
+running ROS 2 Jazzy on the same network, with `ROS_DOMAIN_ID` unset or 0, sees every rover
+topic directly, and the rover sees its topics (e.g. `/goal_pose`) the same way.
+
+DDS sends each topic a subscriber asks for, at full rate. To keep the radio link light,
+subscribe on the base station to the throttled copies only:
 
 | Topic | Default rate |
 |---|---|
-| `/remote/costmap` | 2 Hz |
-| `/remote/color/compressed` | 5 Hz, JPEG q60 |
-| `/remote/esdf_slice/cloudini` | 4 Hz, Cloudini-compressed (~620 KB → ~30 KB) |
-| `/tf`, `/tf_static`, odometry | capped at 30 / 20 Hz |
+| `/remote/costmap` | 2 Hz (`remote_costmap_hz`) |
+| `/remote/color/compressed` | 5 Hz, JPEG q60 (`remote_image_hz`, `remote_jpeg_quality`) |
+| `/remote/esdf_slice/cloudini` | 4 Hz, Cloudini-compressed, ~620 KB → ~30 KB (`remote_esdf_hz`) |
+| `/tf`, `/tf_static`, odometry | full rate |
 
-With everything subscribed, this measured about 2.9 Mbit/s.
+Avoid subscribing to depth, raw images, `/nvblox_node/mesh` or `/local_costmap/costmap` over the link.
 
-On the base station (zenoh-bridge-ros2dds 1.10.1; copy `zenoh/`):
+Decode the ESDF cloud on the base station:
 
 ```bash
-zenoh-bridge-ros2dds -c base_station.json5 -e tcp/<rover-ip>:7447
-export ROS_DOMAIN_ID=42        # in the GUI's environment; keep the default discovery range
 ros2 run cloudini_ros cloudini_topic_converter --ros-args \
     -p topic_input:=/remote/esdf_slice/cloudini -p topic_output:=/esdf_slice -p compressing:=false
 ```
-
-To let the base station send data to the rover (e.g. `/goal_pose`), add the topic under
-`subscribers` in `zenoh/rover.json5`.
 
 ---
 
@@ -568,7 +565,7 @@ there (`nav2_bringup` is installed) or install `ros-jazzy-nvblox-nav2` on the ho
 
 | Symptom | Cause and fix |
 |---|---|
-| RViz shows "No tf data" / blank images, but the pipeline runs | Discovery mismatch. Every terminal needs `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`; the scripts set it. With subnet discovery, a Wi-Fi drop leaves running nodes undiscoverable. |
+| RViz shows "No tf data" / blank images, but the pipeline runs | Check that `ROS_DOMAIN_ID` and `ROS_AUTOMATIC_DISCOVERY_RANGE` are unset (or match) in every terminal. After a Wi-Fi drop/reconnect, nodes can stay undiscoverable: restart RViz or the pipeline. |
 | Costmap never activates (`Managed nodes are active` missing) | No odometry TF yet. ZED: model optimization may still be running (up to 15 min). D435i: check that cuVSLAM is tracking (`/visual_slam/tracking/odometry`). |
 | A new run crashes with a glibc robust-mutex assertion | Stale Fast DDS shared-memory locks from a force-killed run. Run `stop_nvblox.sh` (it runs `fastdds shm clean`). |
 | `ess_stereo` dies with `No module named torch` | The ESS venv is missing. Create it ([2.7](#27-first-container-start)). |
@@ -578,7 +575,7 @@ there (`nav2_bringup` is installed) or install `ros-jazzy-nvblox-nav2` on the ho
 | Map smears / ghosts when moving | Odometry drift or jumps. Keep `publish_map_tf: false` on the ZED. On the D435i, check cuVSLAM tracking. Lower `max_depth_m` to drop noisy far depth. |
 | `kratos image not built yet` from `start.sh` | Build it ([2.6](#26-build-the-docker-image)). Without it, NVIDIA's base image lacks nvblox and the ZED SDK. |
 
-ESS and the Zenoh bridge respawn automatically if they exit. Other nodes don't.
+ESS respawns automatically if it exits. Other nodes don't.
 
 ---
 
@@ -602,7 +599,6 @@ ESS and the Zenoh bridge respawn automatically if they exit. Other nodes don't.
 | `kratos_nvblox_bringup/rviz/` | RViz layouts per camera |
 | `ess/` | ESS node, TensorRT engines, plugin, torch wheel (LFS), `.venv` (not in git) |
 | `zed/` | persisted ZED models and calibration |
-| `zenoh/` | Zenoh bridge binary and configs |
 | `docker/` | Dockerfile, image build script, ZED udev rule |
 | `bench/`, `bench_zed/` | alternative ESS params, offline ZED depth benchmark |
 
