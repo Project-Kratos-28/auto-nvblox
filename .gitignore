@@ -1,0 +1,11 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Large binaries (torch wheel >100MB, exceeds GitHub limit)
+ess/wheels/
+
+# Logs
+*.log
+logs/

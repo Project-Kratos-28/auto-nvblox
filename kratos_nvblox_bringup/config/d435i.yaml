@@ -1,0 +1,46 @@
+# RealSense D435i for nvblox + ESS. NVIDIA's realsense_emitter_flashing.yaml with the
+# resolution raised from 640x480 to 848x480 (the D435i's native depth/IR resolution).
+# The projector flashes every other frame (60 fps); realsense_splitter hands the
+# projector-off IR pair (30 fps) to cuVSLAM and ESS.
+%YAML 1.2
+---
+device_type: ''
+serial_no: ''
+usb_port_id: ''
+
+rgb_camera:
+  color_profile: '848x480x30'
+  profile: '848x480x30'
+color_info_qos: "SENSOR_DATA"
+color_qos: "SENSOR_DATA"
+
+depth_module:
+  depth_profile: '848x480x60'
+  infra_profile: '848x480x60'
+  profile: '848x480x60'
+  emitter_enabled: 1
+  emitter_on_off: true
+depth_qos: "SENSOR_DATA"
+depth_info_qos: "SENSOR_DATA"
+
+infra_qos: "SENSOR_DATA"
+
+enable_accel: true
+enable_color: true
+enable_depth: true
+enable_gyro: true
+enable_infra1: true
+enable_infra2: true
+
+pointcloud:
+  enable: false
+
+pointcloud_texture_index: 0
+pointcloud_texture_stream: RS2_STREAM_ANY
+
+enable_sync: false
+align_depth: false
+
+gyro_fps: 200
+accel_fps: 200
+unite_imu_method: 2

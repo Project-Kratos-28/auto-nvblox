@@ -1,0 +1,24 @@
+// zenoh-bridge-ros2dds on the base station (same version as the rover's: 1.10.1).
+// Connects to the rover's bridge and republishes its allow-listed topics into the base
+// station's local ROS 2 (domain below), where the PyQt5 GUI subscribes with rclpy as usual.
+//
+//     zenoh-bridge-ros2dds -c base_station.json5 -e tcp/<rover-ip>:7447
+//
+// Without ROS 2 on the base station, skip this bridge and subscribe with zenoh-python instead:
+// keys are the topic names without the leading "/" (e.g. "remote/costmap"), payloads are CDR.
+{
+  mode: "client",
+  connect: { endpoints: ["tcp/192.168.1.50:7447"] },   // rover (overridden by -e)
+  scouting: { multicast: { enabled: false } },
+  plugins: {
+    ros2dds: {
+      // Use the same ROS_DOMAIN_ID in the GUI. Keep the default SUBNET discovery (as in the GUI):
+      // this bridge (CycloneDDS) and a Fast DDS node set to LOCALHOST do not exchange data in
+      // that direction (tested). A dedicated domain keeps the base station's traffic separate;
+      // the rover's DDS is LOCALHOST-only and never sees it.
+      domain: 42,
+      ros_automatic_discovery_range: "SUBNET",
+    },
+  },
+  transport: { unicast: { compression: { enabled: true } } },
+}

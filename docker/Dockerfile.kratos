@@ -1,0 +1,62 @@
+# kratos_nvblox dev image: NVIDIA's Isaac ROS 4.6 + realsense image (built by `isaac-ros activate
+# --build-local`) plus everything this project needs, so a fresh `--rm` container needs no setup.
+#
+#   - nvblox, cuVSLAM, Nav2 costmap packages (were installed by scripts/setup_in_container.sh)
+#   - ESS node runtime deps (torch itself lives in the mounted ess/.venv)
+#   - ZED SDK 5.4.1 for L4T 39.2 + zed-ros2-wrapper v5.4.1 (ZED 2i)
+#
+# NVIDIA's own ZED layer (/etc/isaac-ros-cli/docker/Dockerfile.zed) installs the SDK built for
+# L4T 38.4 (Thor, JetPack 7.0) and turns the SDK's depth off; this Orin runs L4T 39.2, and we
+# want the SDK's depth available, so this file does its own install.
+#
+# Built and tagged by docker/build_image.sh.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-c"]
+ARG ROS_DISTRO=jazzy
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+        ros-${ROS_DISTRO}-isaac-ros-nvblox \
+        ros-${ROS_DISTRO}-nvblox-examples-bringup \
+        ros-${ROS_DISTRO}-nvblox-nav2 \
+        ros-${ROS_DISTRO}-isaac-ros-visual-slam \
+        ros-${ROS_DISTRO}-nav2-costmap-2d \
+        ros-${ROS_DISTRO}-nav2-lifecycle-manager \
+        ros-${ROS_DISTRO}-nav2-bringup \
+        ros-${ROS_DISTRO}-rviz2 \
+        ros-${ROS_DISTRO}-robot-state-publisher \
+        ros-${ROS_DISTRO}-xacro \
+        libopenblas0 python3-venv \
+        lsb-release wget less zstd udev
+
+# ZED SDK. The installer reads the L4T release from /etc/nv_tegra_release, which docker build
+# does not see (the NVIDIA runtime only mounts it into running containers).
+ARG ZED_SDK_URL=https://stereolabs.sfo2.cdn.digitaloceanspaces.com/zedsdk/5.4/ZED_SDK_Tegra_L4T39.2_v5.4.1.zstd.run
+RUN echo "# R39 (release), REVISION: 2.1" > /etc/nv_tegra_release \
+    && wget -q -O /tmp/ZED_SDK.run "${ZED_SDK_URL}" \
+    && chmod +x /tmp/ZED_SDK.run \
+    && /tmp/ZED_SDK.run silent skip_od_module skip_python skip_drivers \
+    && rm -f /tmp/ZED_SDK.run \
+    && rm -rf /usr/local/zed/resources/* \
+    && chmod -R a+rwX /usr/local/zed
+
+# ZED ROS 2 wrapper, same version as the SDK. Its optional NITROS transport is switched off:
+# the wrapper finds the NITROS packages nvblox pulls in and fails to compile against them
+# (missing isaac_ros_nitros/types/nitros_type_view.hpp); nvblox and ESS use plain ROS topics.
+ARG ZED_WS=/opt/zed_ws
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    mkdir -p ${ZED_WS}/src && cd ${ZED_WS}/src \
+    && git clone --depth 1 --recurse-submodules -b v5.4.1 https://github.com/stereolabs/zed-ros2-wrapper \
+    && cd ${ZED_WS} && source /opt/ros/${ROS_DISTRO}/setup.bash \
+    && apt-get update && rosdep update --rosdistro ${ROS_DISTRO} \
+    && rosdep install --from-paths src --ignore-src -r -y --rosdistro ${ROS_DISTRO} \
+    && colcon build --packages-up-to zed_wrapper --cmake-args -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_DISABLE_FIND_PACKAGE_isaac_ros_nitros=ON \
+    && rm -rf build log \
+    && echo "source ${ZED_WS}/install/setup.bash" >> /etc/bash.bashrc
+
+# Remote link to the base station: Cloudini point cloud compression (the Zenoh bridge is a
+# standalone binary in the mounted ~/kratos_nvblox/zenoh). Last layer so it rebuilds alone.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends ros-${ROS_DISTRO}-cloudini-ros

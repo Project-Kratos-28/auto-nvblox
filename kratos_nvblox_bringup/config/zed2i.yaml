@@ -1,0 +1,26 @@
+# ZED 2i overrides on top of zed-ros2-wrapper v5.4.1's common_stereo.yaml + zed2i.yaml.
+# Passed to zed_camera.launch.py as ros_params_override_path.
+/**:
+  ros__parameters:
+    general:
+      grab_resolution: 'HD720'   # 1280x720; HD1080 grabs at most 30 fps and costs ~2x GPU
+      grab_frame_rate: 60
+      pub_resolution: 'NATIVE'   # NVIDIA's nvblox config halves this (640x360); keep full res
+      pub_frame_rate: 30.0
+    video:
+      publish_rgb: true
+      publish_gray: true         # left/right gray rect pair for ESS (depth:=ess)
+      publish_left_right: true
+    depth:
+      # depth_mode is set by the launch file: NEURAL for depth:=zed, NEURAL_LIGHT for
+      # depth:=ess (tracking needs the SDK's depth running, but nvblox ignores it then).
+      min_depth: 0.3
+      max_depth: 10.0
+      openni_depth_mode: false   # 32FC1 metres; nvblox takes it directly
+      point_cloud_freq: 5.0
+    pos_tracking:
+      pos_tracking_enabled: true
+      imu_fusion: true
+      publish_tf: true           # odom -> zed_camera_link, the costmap's robot frame
+      publish_map_tf: false      # nvblox/costmap work in odom; area-memory jumps would tear the map
+      two_d_mode: false

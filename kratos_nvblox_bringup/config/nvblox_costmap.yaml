@@ -1,0 +1,38 @@
+# Nav2 costmap fed by nvblox (D435i, single camera, cuVSLAM odometry).
+#
+# The same `nvblox_layer` block drops straight into the local_costmap /
+# global_costmap sections of a full Nav2 params file.
+#
+# Frames: cuVSLAM publishes odom -> camera0_link. With the camera alone there is
+# no robot, so camera0_link stands in for base_link. On a robot, publish a static
+# base_link -> camera0_link transform and set robot_base_frame back to base_link.
+/**:
+  ros__parameters:
+    update_frequency: 20.0        # Nav2 only publishes on update ticks; measured: 10/10 -> 6 Hz,
+    publish_frequency: 20.0       # 20/10 -> 7 Hz, 20/20 -> 11.4 Hz (= nvblox slice rate, ~12 Hz)
+    global_frame: odom
+    robot_base_frame: camera0_link
+    rolling_window: true
+    width: 10
+    height: 10
+    resolution: 0.02            # matches nvblox voxel_size (nvblox_overrides.yaml)
+    footprint: "[ [0.15, 0.15], [0.15, -0.15], [-0.15, -0.15], [-0.15, 0.15] ]"
+    track_unknown_space: false
+    always_send_full_costmap: true
+    transform_tolerance: 0.3
+    # How long activation waits for odom -> robot frame. The ZED SDK optimizes its neural
+    # depth model on the first run after an SDK/GPU change (~7 min on this Orin) before
+    # tracking starts; the 60 s default made the costmap give up.
+    initial_transform_timeout: 900.0
+    plugins: ["nvblox_layer", "inflation_layer"]
+    nvblox_layer:
+      plugin: "nvblox::nav2::NvbloxCostmapLayer"
+      enabled: true
+      nav2_costmap_global_frame: odom   # must equal global_frame above
+      nvblox_map_slice_topic: "/nvblox_node/static_map_slice"
+      convert_to_binary_costmap: true
+    inflation_layer:
+      plugin: "nav2_costmap_2d::InflationLayer"
+      enabled: true
+      cost_scaling_factor: 10.0
+      inflation_radius: 0.5

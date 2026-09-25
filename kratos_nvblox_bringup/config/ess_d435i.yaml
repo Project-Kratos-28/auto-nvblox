@@ -1,0 +1,18 @@
+# ESS DNN stereo (/workspaces/kratos_nvblox/ess/ess_stereo_node.py, from ~/realsense rs_depth_bench) on the
+# projector-off IR pair from realsense_splitter. Tuning from ~/realsense/ess eval rounds.
+ess_stereo:
+  ros__parameters:
+    left_topic: /camera0/realsense_splitter_node/output/infra_1
+    right_topic: /camera0/realsense_splitter_node/output/infra_2
+    left_info_topic: /camera0/infra1/camera_info
+    right_info_topic: /camera0/infra2/camera_info
+    engine_path: /workspaces/kratos_nvblox/ess/engines/ess_fp16.engine   # 960x576 network
+    plugin_path: /workspaces/kratos_nvblox/ess/plugins/ess_plugins.so
+    input_norm: stretch
+    tta: true
+    tta_tolerance_px: 2.0
+    confidence_threshold: 0.1
+    edge_disparity_px: 1.0      # drop flying pixels at depth edges (they smear into the map)
+    min_depth_m: 0.2
+    max_depth_m: 6.0            # D435i baseline: disparity error grows fast beyond this
+    baseline_m: 0.0             # read from infra2 camera_info

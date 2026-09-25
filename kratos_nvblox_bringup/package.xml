@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>kratos_nvblox_bringup</name>
+  <version>0.1.0</version>
+  <description>nvblox + Nav2 costmap bringup for the Kratos robot, switchable between a RealSense D435i and a ZED 2i (ESS or camera depth).</description>
+  <maintainer email="neelnaik2005@gmail.com">bitsauto</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>nvblox_ros</exec_depend>
+  <exec_depend>nvblox_nav2</exec_depend>
+  <exec_depend>nvblox_examples_bringup</exec_depend>
+  <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
+  <exec_depend>cloudini_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <!-- camera:=d435i -->
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>realsense_splitter</exec_depend>
+  <exec_depend>isaac_ros_visual_slam</exec_depend>
+  <!-- camera:=zed2i (built into the kratos image at /opt/zed_ws, not a rosdep key) -->
+  <exec_depend>zed_wrapper</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

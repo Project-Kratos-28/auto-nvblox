@@ -1,0 +1,10 @@
+# Applied on top of NVIDIA's nvblox_base.yaml + nvblox_realsense.yaml.
+/**:
+  ros__parameters:
+    voxel_size: 0.02            # default 0.05; the blocky map/costmap came from this
+    static_mapper:
+      projective_integrator_max_integration_distance_m: 5.0
+      projective_integrator_truncation_distance_vox: 4.0   # 8 cm band at 2 cm voxels
+    # 2D ESDF slice feeding the Nav2 costmap layer. Default 10 Hz (~8 Hz achieved with
+    # ESS on the GPU). The 2D slice is cheap next to TSDF integration.
+    update_esdf_rate_hz: 15.0

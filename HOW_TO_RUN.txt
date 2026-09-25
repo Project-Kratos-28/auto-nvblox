@@ -1,0 +1,150 @@
+KRATOS NVBLOX - HOW TO RUN
+==========================
+
+nvblox + Nav2 costmap on the Jetson AGX Orin, inside Docker, using either a
+ZED 2i or a RealSense D435i. Everything runs inside the container.
+More detail: README.md in this folder.
+
+
+0. ON THE ROVER, FROM THE BASE STATION (normal use)
+----------------------------------------------------
+Over SSH through the Rocket link. Everything keeps running if the SSH session or the link drops.
+
+    ssh bitsauto@<rover-ip> ~/kratos_nvblox/rover_up.sh camera:=zed2i      (or camera:=d435i)
+    ssh bitsauto@<rover-ip> ~/kratos_nvblox/rover_status.sh               health + link usage
+    ssh bitsauto@<rover-ip> ~/kratos_nvblox/rover_down.sh                 stop (--all: also the container)
+
+rover_up.sh starts the container if needed, starts nvblox in the background (log:
+~/kratos_nvblox/logs/latest.log), waits for the costmap and prints a health summary.
+It runs headless: no RViz on the rover.
+
+What goes over the radio: ONLY the Zenoh bridge (tcp port 7447), carrying
+    /remote/costmap                 costmap, 2 Hz            (onboard costmap runs at ~12 Hz)
+    /remote/color/compressed        JPEG color, 5 Hz, q60
+    /remote/esdf_slice/cloudini     ESDF slice point cloud, 4 Hz, Cloudini-compressed (~20x)
+    /tf, /tf_static, odometry       capped at 30 / 20 Hz
+Measured: ~2.9 Mbit/s with everything subscribed. Nothing is sent that nobody subscribes to.
+Rates: rover_up.sh camera:=zed2i remote_costmap_hz:=1.0 remote_image_hz:=2.0 ...
+Allowed topics: ~/kratos_nvblox/zenoh/rover.json5 (add e.g. /goal_pose under "subscribers"
+to let the base station send goals).
+
+On the BASE STATION (same zenoh-bridge-ros2dds version, 1.10.1; copy ~/kratos_nvblox/zenoh/):
+    zenoh-bridge-ros2dds -c base_station.json5 -e tcp/<rover-ip>:7447
+    export ROS_DOMAIN_ID=42          (in the GUI's environment; default discovery range)
+The PyQt5 GUI then subscribes with rclpy to the topics above. Decode the Cloudini cloud with
+    ros2 run cloudini_ros cloudini_topic_converter --ros-args \
+        -p topic_input:=/remote/esdf_slice/cloudini -p topic_output:=/esdf_slice -p compressing:=false
+(or point_cloud_transport_py in the GUI). Without ROS on the base station, use zenoh-python
+directly: keys like "remote/costmap", payloads are CDR-encoded ROS messages.
+
+
+1. START THE CONTAINER (host terminal)
+--------------------------------------
+    ~/kratos_nvblox/start.sh
+
+This opens a shell inside the container (prompt: admin@...:/workspaces/isaac_ros-dev$).
+Running start.sh again from another terminal attaches to the same container.
+
+
+2. RUN NVBLOX (inside the container)
+------------------------------------
+Pick the camera that is plugged in:
+
+    /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i
+    /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=d435i
+
+That starts: camera -> depth -> odometry -> nvblox -> Nav2 costmap, the /remote/* topics
+and the Zenoh bridge. No RViz unless you add run_rviz:=True (needs a monitor on the rover).
+
+Options (add after the camera):
+    depth:=ess          depth from NVIDIA ESS (default)
+    depth:=native       the camera's own depth (ZED: NEURAL depth, D435i: on-chip)
+    run_rviz:=True      RViz on the rover's own display
+    run_zenoh:=False    no Zenoh bridge
+    run_foxglove:=True  Foxglove websocket viewer on port 8765
+    run_costmap:=False  no standalone costmap (when a full Nav2 stack provides one)
+
+Example:
+    /workspaces/kratos_nvblox/scripts/run_nvblox.sh camera:=zed2i depth:=native
+
+The same thing as a plain ROS launch (the script just sets up the environment first):
+    ros2 launch kratos_nvblox_bringup bringup.launch.py camera:=zed2i
+    ros2 launch kratos_nvblox_bringup bringup.launch.py --show-args    (lists all options)
+
+
+3. STOP
+-------
+Ctrl+C in the terminal running it, then (host or container):
+
+    ~/kratos_nvblox/scripts/stop_nvblox.sh
+
+Always use stop_nvblox.sh to clean up. Do NOT use "pkill -f": the container shares the
+host's process list, so pkill patterns can kill unrelated host processes.
+
+
+4. OUTPUTS
+----------
+    /local_costmap/costmap          Nav2 costmap (OccupancyGrid, 2 cm cells, ~12 Hz)
+    /nvblox_node/static_map_slice   what Nav2's nvblox costmap layer reads
+    /ess/depth                      ESS depth (depth:=ess)
+    TF odom -> camera               zed_camera_link (ZED) or camera0_link (D435i)
+
+To see these topics from a HOST terminal, first run:
+    source /opt/ros/jazzy/setup.bash
+    export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+
+
+5. RVIZ ON THE ROVER DISPLAY (separately, for a running pipeline)
+-----------------------------------------------
+Host terminal:
+    xhost +local:
+    docker exec -it -u admin -e DISPLAY=$DISPLAY -e CAMERA=zed2i isaac_ros_dev_container \
+        /workspaces/kratos_nvblox/scripts/run_rviz.sh
+(CAMERA=d435i for the RealSense layout.)
+
+
+6. SWITCHING CAMERAS
+--------------------
+    1. stop nvblox (step 3)
+    2. unplug one camera, plug in the other (USB 3 port)
+    3. restart the container: exit its shell, then ~/kratos_nvblox/start.sh
+       (the container only sees devices that existed when it started)
+    4. run with the other camera:= value
+
+
+7. CHANGING SETTINGS
+--------------------
+Files are in ~/kratos_nvblox/kratos_nvblox_bringup/config/ :
+    zed2i.yaml, d435i.yaml          camera resolution / frame rate
+    ess_zed2i.yaml, ess_d435i.yaml  ESS depth settings (tta: off for ZED = 27 Hz; on = stricter, 15 Hz)
+    nvblox_overrides.yaml           voxel size (0.02 m) and map update rates
+    nvblox_costmap.yaml             costmap size, rate, inflation
+
+Edits to these files take effect on the next run. If you ADD a file to the package, rebuild
+inside the container:
+    /workspaces/kratos_nvblox/scripts/build_ws.sh
+
+
+8. TROUBLESHOOTING
+------------------
+ZED: "invalid serial number" / camera not opening
+    run ~/kratos_nvblox/scripts/stop_nvblox.sh (reattaches the ZED's sensor interface),
+    then restart the container.
+
+ZED: first run after a new container or SDK is slow (several minutes of
+"Optimizing model")
+    normal, done once; the result is saved in ~/kratos_nvblox/zed/.
+
+RViz shows "No tf data" / blank images
+    the ROS discovery setting doesn't match. Use the scripts (they set it), or export
+    ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST in your terminal.
+
+Only one program can use the ZED at a time. The ~/kratos_glim stack (GLIM + Nav2)
+also uses it: stop one before starting the other.
+
+
+9. REBUILDING THE DOCKER IMAGE (rarely needed)
+----------------------------------------------
+Only after changing docker/Dockerfile.kratos (takes 30+ min):
+    ~/kratos_nvblox/docker/build_image.sh
+then restart the container.

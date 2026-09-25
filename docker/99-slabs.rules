@@ -1,0 +1,32 @@
+# HIDAPI/libusb
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f681", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f781", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f881", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", MODE="0666"
+
+# HIDAPI/hidraw
+# No busnum constraint: on multi-controller hosts (e.g. Jetson AGX / AGX Orin)
+# the camera HID interface can enumerate on any bus, not only bus 1.
+KERNEL=="hidraw*", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f681", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f781", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f881", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="df11", MODE="0666"
+
+# (ZED-GMSL i2c-dev rule omitted: USB cameras only on this host)
+# Covers every i2c adapter regardless of numbering (survives kernel/DTB
+# changes). Mode kept at 0666 to match previous behavior: the installer does
+# not manage an 'i2c' group, so tightening to 0660 would lock out existing
+# non-root users.
+
+# Disable USB autosuspend for ZED cameras and their internal USB hub
+# http://kernel.org/doc/Documentation/usb/power-management.txt
+# power/control="on" disables runtime PM entirely, making the deprecated
+# power/autosuspend and power/autosuspend_delay_ms knobs unnecessary.
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f582", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f682", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f681", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f780", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f781", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f880", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="2b03", ATTRS{idProduct}=="f881", TEST=="power/control", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="0424", ATTRS{idProduct}=="2512", TEST=="power/control", ATTR{power/control}="on"
